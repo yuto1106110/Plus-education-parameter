@@ -1,0 +1,72 @@
+name: Update pass.json
+
+on:
+  workflow_dispatch:
+    inputs:
+      add_password:
+        description: '【追加】するパスワード (例: "1234, 5678" のようにカンマ区切りで複数可)'
+        required: false
+        type: string
+      remove_password:
+        description: '【削除】するパスワード (例: "1234, 5678" のようにカンマ区切りで複数可)'
+        required: false
+        type: string
+
+jobs:
+  update-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      # 1. 対象リポジトリ (toka-kun/Education) をチェックアウト
+      - name: Checkout target repository
+        uses: actions/checkout@v4
+        with:
+          repository: toka-kun/Education
+          token: ${{ secrets.PAT_TOKEN }}
+          path: education-repo
+
+      # 2. 現在時刻を取得し、既存の JSON を jq コマンドで更新
+      - name: Update pass.json
+        env:
+          TZ: 'Asia/Tokyo'
+        run: |
+          CURRENT_TIME=$(date +"%Y/%m/%d %H:%M")
+          
+          # フォルダが存在しない場合は作成
+          mkdir -p education-repo/momo
+          
+          # pass.json が存在しない場合の初期化
+          if [ ! -f education-repo/momo/pass.json ]; then
+            echo '{"updated":[],"passwords":[]}' > education-repo/momo/pass.json
+          fi
+
+          # jq を使って JSON を更新（カンマ区切りを配列化＆前後の空白を削除）
+          jq --arg time "$CURRENT_TIME" \
+             --arg add "${{ inputs.add_password }}" \
+             --arg rem "${{ inputs.remove_password }}" \
+             '.updated = [$time] |
+              (if $add != "" then 
+                 .passwords += ($add | split(",") | map(gsub("^\\s+|\\s+$"; ""))) | .passwords |= unique 
+               else . end) |
+              (if $rem != "" then 
+                 .passwords -= ($rem | split(",") | map(gsub("^\\s+|\\s+$"; ""))) 
+               else . end)' \
+             education-repo/momo/pass.json > education-repo/tmp.json
+             
+          # 更新したファイルを元のファイル名に上書き
+          mv education-repo/tmp.json education-repo/momo/pass.json
+
+      # 3. 変更をコミットしてPush
+      - name: Commit and Push
+        working-directory: ./education-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add momo/pass.json
+          
+          # 変更がある場合のみコミットとプッシュを行う
+          if ! git diff --staged --quiet; then
+            git commit -m "Update momo/pass.json: ${CURRENT_TIME}"
+            git push
+          else
+            echo "No changes to commit"
+          fi
