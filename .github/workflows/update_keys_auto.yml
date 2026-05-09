@@ -173,6 +173,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://${{ secrets.PAT_TOKEN }}@github.com/".insteadOf "https://github.com/"
           
           # key4.json も追加対象に含める
           git add keys/key1.json keys/key2.json keys/key3.json keys/key4.json keys/key.json
